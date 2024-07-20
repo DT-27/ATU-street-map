@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Accra Technical University Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+    <style>
+        #mapid { height: 80vh; }
+        #route { height: 10vh; }
+        #searchContainer { position: absolute; top: 10px; left: 50px; z-index: 1000; background: white; padding: 10px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <div id="searchContainer">
+        <input type="text" id="searchInput" placeholder="Search for a location...">
+        <button id="searchButton">Search</button>
+    </div>
+    <div id="mapid"></div>
+    <div id="route"></div>
+
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+    <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBTNWxJroQZbupAnGRzizf58yH1zS_k86w&libraries=places"></script>
+    <script>
+        var map = L.map('mapid').setView([5.554028, -0.205556], 19);
+
+        // OpenStreetMap Tile Layer for streets and buildings
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 25,
+            attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        }).addTo(map);
+
+        // Google Maps Satellite Tile Layer
+        var googleSat = L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+            maxZoom: 25,
+            subdomains:['mt0','mt1','mt2','mt3'],
+            attribution: '&copy; <a href="https://maps.google.com">Google Maps</a>'
+        }).addTo(map);
+
+        // Initialize user marker and circle
+        var userMarker, userCircle, currentLatLng;
+
+        // List of buildings and rooms
+        var locations = {
+            "Engineering Block": { lat: 5.555, lng: -0.206, rooms: ["F1", "F2", "F3"] },
+            "Science Block": { lat: 5.556, lng: -0.207, rooms: ["S1", "S2", "S3"] },
+            // Add more blocks and rooms as needed
+        };
+
+        // Function to get the user location
+        function getPosition(position) {
+            var lat = position.coords.latitude;
+            var long = position.coords.longitude;
+            var accuracy = position.coords.accuracy;
+
+            if (!userMarker) {
+                userMarker = L.marker([lat, long]).addTo(map);
+                userCircle = L.circle([lat, long], { radius: accuracy }).addTo(map);
+            } else {
+                userMarker.setLatLng([lat, long]);
+                userCircle.setLatLng([lat, long]);
+                userCircle.setRadius(accuracy);
+            }
+
+            currentLatLng = { lat: lat, lng: long };
+
+            console.log("Your coordinates: " + lat + ", " + long + ", Accuracy: " + accuracy);
+        }
+
+        function handleError(error) {
+            console.error("Geolocation error: " + error.message);
+        }
+
+        if (navigator.geolocation) {
+            setInterval(() => {
+                navigator.geolocation.getCurrentPosition(getPosition, handleError, {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
+                });
+            }, 5000); // Refreshes every 5 seconds
+        } else {
+            console.log('Your browser does not support this feature');
+        }
+
+        // Function to search for a location
+        function searchLocation() {
+            var searchInput = document.getElementById('searchInput').value;
+            var destination = null;
+
+            for (var building in locations) {
+                if (building.toLowerCase() === searchInput.toLowerCase()) {
+                    destination = locations[building];
+                    break;
+                }
+
+                if (locations[building].rooms.includes(searchInput.toUpperCase())) {
+                    destination = locations[building];
+                    break;
+                }
+            }
+
+            if (destination && currentLatLng) {
+                L.Routing.control({
+                    waypoints: [
+                        L.latLng(currentLatLng.lat, currentLatLng.lng),
+                        L.latLng(destination.lat, destination.lng)
+                    ],
+                    routeWhileDragging: true
+                }).addTo(map);
+            } else {
+                alert("Location not found");
+            }
+        }
+
+        document.getElementById('searchButton').addEventListener('click', searchLocation);
+    </script>
+</body>
+</html>
