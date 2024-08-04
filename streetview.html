@@ -8,21 +8,49 @@
         #mapid { height: 80vh; }
         #route { height: 10vh; }
         #searchContainer {
-          position: absolute;
-           top: 10px;
+            position: absolute;
+            top: 10px;
             left: 50px;
-             z-index: 1000;
-             background: white;
-             padding: 15px;
-             margin-left:10px;
-              border-radius: 5px;
-            }
+            z-index: 1000;
+            background: white;
+            padding: 15px;
+            margin-left: 10px;
+            border-radius: 5px;
+        }
+        #suggestions {
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        #suggestions div {
+            cursor: pointer;
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            background-color: #f9f9f9;
+        }
+        #suggestions div:hover {
+            background-color: #e0e0e0;
+        }
+        #replayButton {
+            margin-top: 10px;
+            padding: 5px 10px;
+            border: none;
+            border-radius: 3px;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+        #replayButton:hover {
+            background-color: #0056b3;
+        }
     </style>
 </head>
 <body>
     <div id="searchContainer">
         <input type="text" id="searchInput" placeholder="Engineering Block">
         <button id="searchButton">Search</button>
+        <div id="suggestions"></div>
+        <button id="replayButton">Replay Last Message</button>
     </div>
     <div id="mapid"></div>
     <div id="route"></div>
@@ -33,72 +61,82 @@
     <script>
         var map = L.map('mapid').setView([5.554028, -0.205556], 19);
 
-        // OpenStreetMap Tile Layer for streets and buildings
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 25,
             attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         }).addTo(map);
 
-        // Google Maps Satellite Tile Layer
         var googleSat = L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
             maxZoom: 25,
             subdomains:['mt0','mt1','mt2','mt3'],
             attribution: '&copy; <a href="https://maps.google.com">Google Maps</a>'
         }).addTo(map);
 
-        // Initialize user marker and circle
-        var userMarker, userCircle, currentLatLng;
+        var userMarker, userCircle, currentLatLng, routingControl, lastSpeechMessage;
 
-        // List of buildings and rooms
         var locations = {
-            "Engineering Block": { lat: 5.5544511, lng: -0.2061878, rooms: ["F1", "F2", "F3"] },
-            "Science Block": { lat: 5.556, lng: -0.207, rooms: ["S1", "S2", "S3"] },
-            "Fashion Block": { lat: 5.5543339, lng: -0.2069720, rooms: [] },
-            "Administration Block": { lat: 5.5537326, lng: -0.2052601, rooms: [] },
-            "SRC building": { lat: 5.5532935, lng: -0.2057137, rooms: [] },
-            "Basketball court": { lat: 5.5526127, lng: -0.2057905, rooms: [] },
+            "Electrical Block": { lat: 5.5544511, lng: -0.2061878, rooms: { "F1": "first floor", "T1": "third floor", "T2": "third floor", "Chaplin office": "fourth floor", "Great hall": "fourth floor", "s1": "second floor", "s2": "second floor", "s3": "second floor", "Electrical lab": "first floor", "lecture office": "first floor", "electrical HOD office": "first floor" } },
+            "ET Block": { lat:5.553943173247183, lng:-0.20566225413551392, rooms: { "ET1": "third floor", "ET2": "third floor", "ET3": "third floor", "ET4": "third floor", "ET5": "third floor", "Biochemistry lab": "ground floor", "Microbiology lab": "ground floor", "SLT": "ground floor" } },
+            "Fashion Block": { lat:5.554312387406433, lng:-0.20691861856344207, rooms: { "FB1": "first floor", "FB2": "second floor", "FB3": "third floor", "FB4": "fourth floor", "FB5": "fifth floor", "Fashion lab": "fourth floor" } },
+            "Administration Block": { lat: 5.553724379563405, lng: -0.20559355862889256, rooms: {} },
+            "SRC building": { lat: 5.553219938265454, lng: -0.20575232156434187, rooms: {} },
+            "Auditorium": { lat: 5.553441770935366, lng: -0.20606832088925278, rooms: {} },
+            "Basketball court": { lat: 5.552156355788615, lng: -0.20582559677549403, rooms: {} },
+            "BTech Block": { lat:5.553791984127408, lng:  -0.2059096204208088, rooms: { "small Btech lab": "third floor","New library":"fourth floor", "Btech lecture office": "second floor","maths and science HOD office": "ground floor", "sports office": "ground floor" } },
+            "K Block": { lat: 5.553477468102175 , lng: -0.205636364970506, rooms: { "Accounting Department": "third floor", "KT": "third floor", "compsa": "first floor", "Maths": "second floor", "statistics": "second floor","Marketing Department": "third floor","KF": "third floor", "KG": "third floor" } },
+            "Boy's Hostel": { lat: 5.552473142857114, lng: -0.20601648009620097, rooms: {} },
+            "Girl's hostel": { lat: 5.5552774771483895, lng: -0.20770065114082717, rooms: {} },
+            "Bank": { lat: 5.554484830438572 , lng: -0.20745603252565858, rooms: { "Pharmacy": "ground floor","store": "ground floor","Bookshop": "ground floor" } },
+            "canteen": { lat: 5.552905421936324, lng: -0.2056653072709468, rooms: {} },
+            "Old library": { lat: 5.5535010275942245 , lng: -0.20506994622999175 , rooms: {} },
         };
 
-        // Function to get the user location
         function getPosition(position) {
             var lat = position.coords.latitude;
-            var long = position.coords.longitude;
+            var lng = position.coords.longitude;
             var accuracy = position.coords.accuracy;
 
             if (!userMarker) {
-                userMarker = L.marker([lat, long]).addTo(map);
-                userCircle = L.circle([lat, long], { radius: accuracy }).addTo(map);
+                userMarker = L.marker([lat, lng]).addTo(map);
+                userCircle = L.circle([lat, lng], { radius: accuracy }).addTo(map);
             } else {
-                userMarker.setLatLng([lat, long]);
-                userCircle.setLatLng([lat, long]);
+                userMarker.setLatLng([lat, lng]);
+                userCircle.setLatLng([lat, lng]);
                 userCircle.setRadius(accuracy);
             }
 
-            currentLatLng = { lat: lat, lng: long };
+            currentLatLng = { lat: lat, lng: lng };
 
-            console.log("Your coordinates: " + lat + ", " + long + ", Accuracy: " + accuracy);
+            console.log("Your coordinates: " + lat + ", " + lng + ", Accuracy: " + accuracy);
         }
 
         function handleError(error) {
             console.error("Geolocation error: " + error.message);
+            alert("Unable to retrieve your location. Please ensure location services are enabled.");
         }
 
-        if (navigator.geolocation) {
-            setInterval(() => {
-                navigator.geolocation.getCurrentPosition(getPosition, handleError, {
+        function startGeolocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.watchPosition(getPosition, handleError, {
                     enableHighAccuracy: true,
                     timeout: 10000,
                     maximumAge: 0
                 });
-            }, 5000); // Refreshes every 5 seconds
-        } else {
-            console.log('Your browser does not support this feature');
+            } else {
+                console.log('Your browser does not support geolocation.');
+                alert('Geolocation is not supported by this browser.');
+            }
         }
 
-        // Function to search for a location
+        startGeolocation();
+
         function searchLocation() {
-            var searchInput = document.getElementById('searchInput').value;
+            var searchInput = document.getElementById('searchInput').value.trim();
             var destination = null;
+            var closestMatch = null;
+            var minDistance = Infinity;
+            var floorInfo = "";
+            var didYouMean = false;
 
             for (var building in locations) {
                 if (building.toLowerCase() === searchInput.toLowerCase()) {
@@ -106,26 +144,109 @@
                     break;
                 }
 
-                if (locations[building].rooms.includes(searchInput.toUpperCase())) {
+                if (locations[building].rooms.hasOwnProperty(searchInput.toUpperCase())) {
                     destination = locations[building];
+                    floorInfo = locations[building].rooms[searchInput.toUpperCase()];
                     break;
+                }
+
+                for (var room in locations[building].rooms) {
+                    var distance = levenshteinDistance(searchInput.toLowerCase(), room.toLowerCase());
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        closestMatch = room;
+                        floorInfo = locations[building].rooms[room];
+                        destination = locations[building];
+                        didYouMean = true;
+                    }
+                }
+
+                var distance = levenshteinDistance(searchInput.toLowerCase(), building.toLowerCase());
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closestMatch = building;
+                    destination = locations[building];
+                    didYouMean = true;
                 }
             }
 
+            var suggestionsContainer = document.getElementById('suggestions');
+            suggestionsContainer.innerHTML = "";
+            if (didYouMean && closestMatch) {
+                var suggestionDiv = document.createElement('div');
+                suggestionDiv.textContent = "Did you mean: " + closestMatch;
+                suggestionDiv.onclick = function() {
+                    document.getElementById('searchInput').value = closestMatch;
+                    searchLocation();
+                };
+                suggestionsContainer.appendChild(suggestionDiv);
+                suggestionsContainer.style.display = 'block';
+            } else {
+                suggestionsContainer.style.display = 'none';
+            }
+
             if (destination && currentLatLng) {
-                L.Routing.control({
+                if (routingControl) {
+                    map.removeControl(routingControl);
+                }
+                routingControl = L.Routing.control({
                     waypoints: [
                         L.latLng(currentLatLng.lat, currentLatLng.lng),
                         L.latLng(destination.lat, destination.lng)
                     ],
                     routeWhileDragging: true
                 }).addTo(map);
+
+                routingControl.on('routesfound', function(e) {
+                    var route = e.routes[0];
+                    var waypoint = route.waypoints[1].latLng;
+                    if (isArrived(waypoint, destination)) {
+                        var msg = new SpeechSynthesisUtterance("Once you arrive at your location, the room you are looking for is on the " + floorInfo + ".");
+                        window.speechSynthesis.speak(msg);
+                        lastSpeechMessage = { text: msg.text, floorInfo: floorInfo };
+                    }
+                });
             } else {
                 alert("Location not found");
             }
         }
 
+        function isArrived(waypoint, destination) {
+            var threshold = 20;
+            var distance = map.distance(waypoint, L.latLng(destination.lat, destination.lng));
+            return distance <= threshold;
+        }
+
+        function levenshteinDistance(a, b) {
+            var tmp;
+            if (a.length === 0) { return b.length; }
+            if (b.length === 0) { return a.length; }
+            if (a.length > b.length) { tmp = a; a = b; b = tmp; }
+
+            var i, j, res, alen = a.length, blen = b.length, row = Array(alen);
+            for (i = 0; i <= alen; i++) { row[i] = i; }
+
+            for (i = 1; i <= blen; i++) {
+                res = i;
+                for (j = 1; j <= alen; j++) {
+                    tmp = row[j - 1];
+                    row[j - 1] = res;
+                    res = b[i - 1] === a[j - 1] ? tmp : Math.min(tmp + 1, Math.min(res + 1, row[j] + 1));
+                }
+            }
+            return res;
+        }
+
         document.getElementById('searchButton').addEventListener('click', searchLocation);
+
+        document.getElementById('replayButton').addEventListener('click', function() {
+            if (lastSpeechMessage) {
+                var msg = new SpeechSynthesisUtterance("The room you are looking for is on the " + lastSpeechMessage.floorInfo + ".");
+                window.speechSynthesis.speak(msg);
+            } else {
+                alert("No message to replay");
+            }
+        });
     </script>
 </body>
 </html>
